@@ -1,10 +1,13 @@
-require("dotenv").config(); // Fixed typo: lowercase 'require'
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 const app = express();
+
+// Initialize Resend with your API Key from Render Environment Variables
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // -------------------------------------------------------------------
 // Enhanced CORS & Parsing Middleware
@@ -30,17 +33,6 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // -------------------------------------------------------------------
-// 2. Configure Email Transporter (Nodemailer)
-// -------------------------------------------------------------------
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-// -------------------------------------------------------------------
 // Health Check / Root Endpoint
 // -------------------------------------------------------------------
 app.get("/", (req, res) => {
@@ -48,7 +40,7 @@ app.get("/", (req, res) => {
 });
 
 // -------------------------------------------------------------------
-// 3. Endpoint: Send OTP
+// 2. Endpoint: Send OTP
 // -------------------------------------------------------------------
 app.post("/api/send-otp", async (req, res) => {
   const { email } = req.body;
@@ -58,7 +50,7 @@ app.post("/api/send-otp", async (req, res) => {
   }
 
   try {
-    // Check if user exists in Firebase Auth
+    // Verify user exists in Firebase Auth
     const user = await admin.auth().getUserByEmail(email);
 
     // Generate random 6-digit OTP code
@@ -72,9 +64,9 @@ app.post("/api/send-otp", async (req, res) => {
       expiresAt: expiresAt,
     });
 
-    // Send styled email
-    await transporter.sendMail({
-      from: '"Flexi Educational Consult" <no-reply@flexieduconsult.com.ng>',
+    // Send email via Resend HTTP API
+    await resend.emails.send({
+      from: "Flexi Educational Consult <onboarding@resend.dev>", // Default free testing domain
       to: email,
       subject: "Your Password Reset OTP Code",
       html: `
@@ -104,7 +96,7 @@ app.post("/api/send-otp", async (req, res) => {
 });
 
 // -------------------------------------------------------------------
-// 4. Endpoint: Verify OTP & Reset Password
+// 3. Endpoint: Verify OTP & Reset Password
 // -------------------------------------------------------------------
 app.post("/api/verify-otp", async (req, res) => {
   const { email, otp, newPassword } = req.body;
@@ -123,22 +115,22 @@ app.post("/api/verify-otp", async (req, res) => {
 
     const data = doc.data();
 
-    // Verify code match
+    // Check code match
     if (data.otp !== otp) {
       return res.status(400).json({ success: false, message: "Invalid OTP code." });
     }
 
-    // Verify code expiration
+    // Check code expiry
     if (Date.now() > data.expiresAt) {
       return res.status(400).json({ success: false, message: "OTP code has expired. Please request a new one." });
     }
 
-    // Reset user password via Firebase Admin SDK
+    // Update password via Firebase Admin SDK
     await admin.auth().updateUser(data.uid, {
       password: newPassword,
     });
 
-    // Delete used OTP record from Firestore
+    // Delete used OTP
     await docRef.delete();
 
     return res.status(200).json({ success: true, message: "Password updated successfully!" });
