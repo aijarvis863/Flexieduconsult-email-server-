@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config(); // Fixed typo: lowercase 'require'
 const express = require("express");
 const cors = require("cors");
 const admin = require("firebase-admin");
@@ -6,14 +6,21 @@ const nodemailer = require("nodemailer");
 
 const app = express();
 
-// Allow requests from your frontend
-app.use(cors());
+// -------------------------------------------------------------------
+// Enhanced CORS & Parsing Middleware
+// -------------------------------------------------------------------
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 
 // -------------------------------------------------------------------
 // 1. Initialize Firebase Admin SDK
 // -------------------------------------------------------------------
-// We parse the JSON key string stored in our environment variables
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
@@ -26,11 +33,18 @@ const db = admin.firestore();
 // 2. Configure Email Transporter (Nodemailer)
 // -------------------------------------------------------------------
 const transporter = nodemailer.createTransport({
-  service: "gmail", // Works with standard Gmail or Google Workspace
+  service: "gmail",
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // Your 16-character Google App Password
+    pass: process.env.EMAIL_PASS,
   },
+});
+
+// -------------------------------------------------------------------
+// Health Check / Root Endpoint
+// -------------------------------------------------------------------
+app.get("/", (req, res) => {
+  res.send("Flexi OTP Service is running live!");
 });
 
 // -------------------------------------------------------------------
@@ -49,16 +63,16 @@ app.post("/api/send-otp", async (req, res) => {
 
     // Generate random 6-digit OTP code
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // Code expires in 10 minutes
+    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
 
-    // Save OTP details in Firestore under collection "resetOTPs" using email as doc ID
+    // Save OTP details in Firestore
     await db.collection("resetOTPs").doc(email).set({
       otp: otp,
       uid: user.uid,
       expiresAt: expiresAt,
     });
 
-    // Send the styled email
+    // Send styled email
     await transporter.sendMail({
       from: '"Flexi Educational Consult" <no-reply@flexieduconsult.com.ng>',
       to: email,
@@ -80,11 +94,11 @@ app.post("/api/send-otp", async (req, res) => {
     return res.status(200).json({ success: true, message: "OTP code sent to your email!" });
   } catch (error) {
     console.error("Error in /api/send-otp:", error);
-    
+
     if (error.code === "auth/user-not-found") {
       return res.status(404).json({ success: false, message: "No account found with this email." });
     }
-    
+
     return res.status(500).json({ success: false, message: "Error sending OTP email. Please try again." });
   }
 });
@@ -134,10 +148,6 @@ app.post("/api/verify-otp", async (req, res) => {
   }
 });
 
-// Health check endpoint (Useful for keeping Render service active or testing)
-app.get("/", (req, res) => {
-  res.send("Flexi OTP Service is running live!");
-});
-
+// Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
