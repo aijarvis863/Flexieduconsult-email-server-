@@ -66,7 +66,7 @@ app.post("/api/send-otp", async (req, res) => {
 
     // Send email via Resend HTTP API
     await resend.emails.send({
-      from: "Flexi Educational Consult <onboarding@resend.dev>", // Default free testing domain
+      from: "Flexi Educational Consult <no-reply@flexieduconsult.com.ng>", // Default free testing domain
       to: email,
       subject: "Your Password Reset OTP Code",
       html: `
